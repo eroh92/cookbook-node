@@ -54,12 +54,35 @@ bash "compile_nodejs_source" do
   EOH
 end
 
-
-bash "install_npm" do
-  user "root"
+if node[:npm][:version]
+  bash "install_npm v#{node[:npm][:version]}" do
     cwd "/tmp/"
     code <<-EOH
-    curl http://npmjs.org/install.sh | clean=no sh
+    # Check the remote hash first
+    previousnpmversion="$(cat /usr/local/share/npm_version)"
+    remotetagcommit="$(git ls-remote -h -t https://github.com/isaacs/npm.git #{node[:npm][:version]}^{} | awk '{print $1}')"
+    remotecommit="$(git ls-remote -h -t https://github.com/isaacs/npm.git #{node[:npm][:version]} | awk '{print $1}')"
+    if [ \\( -n "$remotetagcommit" -a "$remotetagcommit" = "$previousnpmversion" \\) -o \\( -n "$remotecommit" -a "$remotecommit" = "$previousnpmversion" \\) ]; then
+      exit 0
+    fi
+    git clone https://github.com/isaacs/npm.git
+    cd node
+    git checkout #{node[:npm][:version]}
+    currentnpmversion="$(git show -s --format=%H)"
+    if [ "$currentnpmversion" = "$previousnpmversion" ]; then
+      exit 0
+    fi
+    ./configure && make && make install
+    git show -s --format=%H > /usr/local/share/npm_version
     EOH
+  end
+else
+  bash "install_npm latest" do
+    user "root"
+      cwd "/tmp/"
+      code <<-EOH
+      curl http://npmjs.org/install.sh | clean=no sudo sh
+      EOH
+  end
 end
 
